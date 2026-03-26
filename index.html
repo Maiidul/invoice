@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rupsaaj Invoice Creator</title>
+
+    <!-- Tailwind CSS for Styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- React & ReactDOM (Standalone) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- Babel (Compiles the React code in the browser) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- html2canvas & jsPDF for Ultra-HD Exporting -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body class="bg-gray-100">
+
+    <!-- The app will render inside this div -->
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // Global safeguard for Tailwind
+        if (typeof window !== 'undefined') {
+          window.tailwind = window.tailwind || { config: {} };
+        }
+
+        const { useState, useRef, useEffect } = React;
+
+        // --- SVG Icons ---
+        const CheckCircle = ({size=24, className=""}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>);
+        const FileText = ({size=24, className=""}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>);
+        const Download = ({size=24, className=""}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>);
+        const RefreshCw = ({size=24, className=""}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>);
+        const Plus = ({size=24, className=""}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>);
+        const Trash2 = ({size=24, className=""}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>);
+        const Loader2 = ({size=24, className=""}) => (<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>);
+
+        // --- Main App Component ---
+        const App = () => {
+          const containerRef = useRef(null);
+          const [scale, setScale] = useState(1);
+          const [isGenerating, setIsGenerating] = useState(false);
+          const [sameAsBilling, setSameAsBilling] = useState(false);
+
+          // State for all invoice data
+          const [data, setData] = useState({
+            invoiceNo: '',
+            invoiceDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+            isPaid: true,
+            currency: 'BDT',
+            billedBy: {
+              name: 'RUPSAAJ',
+              address1: 'Kazla,',
+              address2: 'Rajshahi,',
+              address3: 'Bangladesh - 6301',
+              email: 'info@rupsaaj.com',
+              phone: '+880 1518 981543'
+            },
+            billedTo: { name: '', fullAddress: '', thana: '', district: '', phone: '' },
+            shippedTo: { name: '', fullAddress: '', thana: '', district: '', phone: '' },
+            items: [
+              { id: 1, description: '', sku: '', qty: 1, itemTotal: 0 }
+            ]
+          });
+
+          // Calculate totals
+          const totals = data.items.reduce((acc, item) => {
+            acc.amount += Number(item.itemTotal) || 0;
+            return acc;
+          }, { amount: 0 });
+
+          // --- Smart Invoice Number Logic ---
+          useEffect(() => {
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            const d = String(now.getDate()).padStart(2, '0');
+            const todayStr = `${y}${m}${d}`;
+
+            const lastDate = localStorage.getItem('rupsaaj_inv_date');
+            let seq = 1;
+
+            if (lastDate === todayStr) {
+               seq = parseInt(localStorage.getItem('rupsaaj_inv_seq') || '1', 10);
+            } else {
+               localStorage.setItem('rupsaaj_inv_date', todayStr);
+               localStorage.setItem('rupsaaj_inv_seq', '1');
+            }
+
+            setData(prev => ({ ...prev, invoiceNo: `${todayStr}${seq}` }));
+          }, []);
+
+          const generateNextInvoiceNo = () => {
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            const d = String(now.getDate()).padStart(2, '0');
+            const todayStr = `${y}${m}${d}`;
+
+            const lastDate = localStorage.getItem('rupsaaj_inv_date');
+            let seq = 1;
+
+            if (lastDate === todayStr) {
+              seq = parseInt(localStorage.getItem('rupsaaj_inv_seq') || '0', 10) + 1;
+            }
+
+            localStorage.setItem('rupsaaj_inv_date', todayStr);
+            localStorage.setItem('rupsaaj_inv_seq', seq.toString());
+
+            setData(prev => ({ ...prev, invoiceNo: `${todayStr}${seq}` }));
+          };
+
+          // Responsive Scaling Logic for Preview
+          useEffect(() => {
+            const handleResize = () => {
+              if (containerRef.current) {
+                const parentWidth = containerRef.current.offsetWidth;
+                const padding = 40;
+                const availableWidth = parentWidth - padding;
+                const newScale = Math.min(1, availableWidth / 1200);
+                setScale(newScale);
+              }
+            };
+            handleResize();
+            window.addEventListener('resize', handleResize);
+            return () => window.removeEventListener('resize', handleResize);
+          }, []);
+
+          const addItem = () => setData({ ...data, items: [...data.items, { id: Date.now(), description: '', sku: '', qty: 1, itemTotal: 0 }] });
+          const removeItem = (id) => setData({ ...data, items: data.items.filter(item => item.id !== id) });
+          const updateItem = (id, field, value) => setData({ ...data, items: data.items.map(item => item.id === id ? { ...item, [field]: value } : item) });
+
+          const handleChange = (section, field, value) => {
+            setData(prev => {
+              const newData = { ...prev };
+              if (section) {
+                newData[section] = { ...newData[section], [field]: value };
+                // Sync to Shipped To if checkbox is checked
+                if (section === 'billedTo' && sameAsBilling) {
+                  newData.shippedTo = { ...newData.shippedTo, [field]: value };
+                }
+              } else {
+                newData[field] = value;
+              }
+              return newData;
+            });
+          };
+
+          const handleSameAsBillingToggle = (e) => {
+            const isChecked = e.target.checked;
+            setSameAsBilling(isChecked);
+            if (isChecked) {
+              setData(prev => ({ ...prev, shippedTo: { ...prev.billedTo } }));
+            }
+          };
+
+          // Load HD Capture Libraries
+          const loadLibraries = async () => {
+            const loadScript = (src) => new Promise((resolve, reject) => {
+              if (document.querySelector(`script[src="${src}"]`)) return resolve();
+              const script = document.createElement('script');
+              script.src = src;
+              script.onload = resolve;
+              script.onerror = reject;
+              document.body.appendChild(script);
+            });
+            await Promise.all([
+              loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'),
+              loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')
+            ]);
+          };
+
+          // Generate Ultra-HD Canvas
+          const generateCanvas = async () => {
+            await loadLibraries();
+            const element = document.getElementById('invoice-capture');
+
+            // Clean, safe execution without risky DOM manipulation
+            return await window.html2canvas(element, {
+              scale: 4,
+              useCORS: true,
+              backgroundColor: '#ffffff',
+              ignoreElements: (node) => {
+                // Prevent Tailwind script re-execution during capture
+                return node.tagName && (node.tagName.toUpperCase() === 'SCRIPT' || node.tagName.toUpperCase() === 'NOSCRIPT');
+              },
+              onclone: (clonedDoc, clonedWindow) => {
+                if (clonedWindow) {
+                  clonedWindow.tailwind = clonedWindow.tailwind || { config: {} };
+                }
+                const clonedEl = clonedDoc.getElementById('invoice-capture');
+                if (clonedEl) {
+                  clonedEl.style.transform = 'none';
+                }
+              }
+            });
+          };
+
+          // Download Exact 2400x3200 JPG
+          const handleDownloadJPG = async () => {
+            setIsGenerating(true);
+            try {
+              const hdCanvas = await generateCanvas();
+
+              const targetCanvas = document.createElement('canvas');
+              targetCanvas.width = 2400;
+              targetCanvas.height = 3200;
+              const ctx = targetCanvas.getContext('2d');
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = 'high';
+              ctx.drawImage(hdCanvas, 0, 0, 2400, 3200);
+
+              const link = document.createElement('a');
+              link.download = `Invoice_${data.invoiceNo || 'Draft'}.jpg`;
+              link.href = targetCanvas.toDataURL('image/jpeg', 1.0);
+              link.click();
+            } catch (error) {
+              console.error(error);
+              alert('Error generating JPG.');
+            } finally {
+              setIsGenerating(false);
+            }
+          };
+
+          // Download Exact 2400x3200 PDF
+          const handleDownloadPDF = async () => {
+            setIsGenerating(true);
+            try {
+              const hdCanvas = await generateCanvas();
+
+              const targetCanvas = document.createElement('canvas');
+              targetCanvas.width = 2400;
+              targetCanvas.height = 3200;
+              const ctx = targetCanvas.getContext('2d');
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = 'high';
+              ctx.drawImage(hdCanvas, 0, 0, 2400, 3200);
+
+              const imgData = targetCanvas.toDataURL('image/jpeg', 1.0);
+              const pdf = new window.jspdf.jsPDF({
+                orientation: 'portrait',
+                unit: 'px',
+                format: [2400, 3200]
+              });
+              pdf.addImage(imgData, 'JPEG', 0, 0, 2400, 3200);
+              pdf.save(`Invoice_${data.invoiceNo || 'Draft'}.pdf`);
+            } catch (error) {
+              console.error(error);
+              alert('Error generating PDF.');
+            } finally {
+              setIsGenerating(false);
+            }
+          };
+
+          const uniformBoxStyle = {
+            backgroundColor: '#f0eef5',
+            padding: '25px',
+            borderRadius: '8px',
+            fontSize: '17px',
+            color: '#222',
+            lineHeight: '1.5',
+            minHeight: '220px',
+            display: 'flex',
+            flexDirection: 'column'
+          };
+
+          const inputStyle = (isDisabled) => `w-full border border-gray-300 rounded-lg p-2.5 text-sm outline-none transition-colors ${isDisabled ? 'bg-gray-100 text-gray-700 cursor-not-allowed border-gray-200' : 'bg-white focus:ring-2 focus:ring-purple-600'}`;
+
+          return (
+            <div className="min-h-screen bg-gray-100 flex flex-col lg:flex-row font-sans text-gray-800">
+
+              {/* LEFT PANEL: Responsive Editor */}
+              <div className="w-full lg:w-[450px] bg-white border-b lg:border-r border-gray-200 lg:h-screen lg:overflow-y-auto p-6 shadow-xl z-10 flex-shrink-0">
+                <h1 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                  <CheckCircle className="text-green-500" /> Invoice Creator
+                </h1>
+
+                <div className="space-y-6">
+                  <div className="grid grid-cols-2 gap-3">
+                    <button onClick={handleDownloadPDF} disabled={isGenerating} className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white py-3 px-4 rounded-lg flex justify-center items-center gap-2 transition-colors font-medium shadow-sm">
+                      {isGenerating ? <Loader2 size={18} className="animate-spin" /> : <FileText size={18} />} PDF
+                    </button>
+                    <button onClick={handleDownloadJPG} disabled={isGenerating} className="bg-white border-2 border-purple-600 text-purple-600 hover:bg-purple-50 disabled:text-purple-300 disabled:border-purple-300 py-3 px-4 rounded-lg flex justify-center items-center gap-2 transition-colors font-medium shadow-sm">
+                      {isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />} JPG
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-sm">
+                    <span className="text-sm font-semibold text-gray-700">Stamp "Payment Received"</span>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" className="sr-only peer" checked={data.isPaid} onChange={(e) => setData({...data, isPaid: e.target.checked})} />
+                      <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500 shadow-inner"></div>
+                    </label>
+                  </div>
+
+                  <div className="space-y-3">
+                    <h3 className="font-bold text-gray-800 border-b-2 border-gray-100 pb-2 text-sm uppercase tracking-wider">Document Details</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-xs font-semibold text-gray-500 uppercase">Invoice No</label>
+                          <button onClick={generateNextInvoiceNo} className="text-[10px] text-purple-600 font-bold bg-purple-50 px-2 py-0.5 rounded hover:bg-purple-100 flex items-center gap-1 transition-colors">
+                            <RefreshCw size={10} /> Next
+                          </button>
+                        </div>
+                        <input type="text" value={data.invoiceNo} onChange={(e) => handleChange(null, 'invoiceNo', e.target.value)} className={inputStyle()} />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-gray-500 uppercase mb-1 block">Date</label>
+                        <input type="text" value={data.invoiceDate} onChange={(e) => handleChange(null, 'invoiceDate', e.target.value)} className={inputStyle()} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <h3 className="font-bold text-gray-800 border-b-2 border-gray-100 pb-2 text-sm uppercase tracking-wider">Billed To (Customer)</h3>
+                    <input type="text" placeholder="Customer Name" value={data.billedTo.name} onChange={(e) => handleChange('billedTo', 'name', e.target.value)} className={`font-semibold ${inputStyle()}`} />
+                    <input type="text" placeholder="Full Address" value={data.billedTo.fullAddress} onChange={(e) => handleChange('billedTo', 'fullAddress', e.target.value)} className={inputStyle()} />
+                    <div className="grid grid-cols-2 gap-3">
+                      <input type="text" placeholder="Thana/Upazila" value={data.billedTo.thana} onChange={(e) => handleChange('billedTo', 'thana', e.target.value)} className={inputStyle()} />
+                      <input type="text" placeholder="District" value={data.billedTo.district} onChange={(e) => handleChange('billedTo', 'district', e.target.value)} className={inputStyle()} />
+                    </div>
+                    <input type="text" placeholder="Phone Number" value={data.billedTo.phone} onChange={(e) => handleChange('billedTo', 'phone', e.target.value)} className={inputStyle()} />
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center border-b-2 border-gray-100 pb-2">
+                      <h3 className="font-bold text-gray-800 text-sm uppercase tracking-wider">Shipped To</h3>
+                      <label className="flex items-center space-x-2 text-xs font-medium text-purple-600 cursor-pointer hover:text-purple-800 select-none">
+                        <input
+                          type="checkbox"
+                          checked={sameAsBilling}
+                          onChange={handleSameAsBillingToggle}
+                          className="rounded border-gray-300 text-purple-600 focus:ring-purple-600 w-4 h-4 cursor-pointer"
+                        />
+                        <span>Same as Billed To</span>
+                      </label>
+                    </div>
+                    <input type="text" placeholder="Recipient Name" value={data.shippedTo.name} onChange={(e) => handleChange('shippedTo', 'name', e.target.value)} disabled={sameAsBilling} className={`font-semibold ${inputStyle(sameAsBilling)}`} />
+                    <input type="text" placeholder="Full Address" value={data.shippedTo.fullAddress} onChange={(e) => handleChange('shippedTo', 'fullAddress', e.target.value)} disabled={sameAsBilling} className={inputStyle(sameAsBilling)} />
+                    <div className="grid grid-cols-2 gap-3">
+                      <input type="text" placeholder="Thana/Upazila" value={data.shippedTo.thana} onChange={(e) => handleChange('shippedTo', 'thana', e.target.value)} disabled={sameAsBilling} className={inputStyle(sameAsBilling)} />
+                      <input type="text" placeholder="District" value={data.shippedTo.district} onChange={(e) => handleChange('shippedTo', 'district', e.target.value)} disabled={sameAsBilling} className={inputStyle(sameAsBilling)} />
+                    </div>
+                    <input type="text" placeholder="Phone Number" value={data.shippedTo.phone} onChange={(e) => handleChange('shippedTo', 'phone', e.target.value)} disabled={sameAsBilling} className={inputStyle(sameAsBilling)} />
+                  </div>
+
+                  <div className="space-y-3 pb-8">
+                    <h3 className="font-bold text-gray-800 border-b-2 border-gray-100 pb-2 text-sm uppercase tracking-wider flex justify-between items-center">
+                      Products
+                      <button onClick={addItem} className="text-purple-600 hover:text-purple-800 text-xs flex items-center gap-1 font-semibold bg-purple-50 px-2 py-1 rounded">
+                        <Plus size={14} /> Add Product
+                      </button>
+                    </h3>
+                    {data.items.map((item, index) => (
+                      <div key={item.id} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm relative group hover:border-purple-300 transition-colors">
+                        <button onClick={() => removeItem(item.id)} className="absolute -top-2 -right-2 bg-red-100 text-red-600 p-1.5 rounded-full hover:bg-red-500 hover:text-white transition-colors shadow-sm">
+                          <Trash2 size={14} />
+                        </button>
+                        <div className="space-y-3">
+                          <input type="text" placeholder="Product Description" value={item.description} onChange={(e) => updateItem(item.id, 'description', e.target.value)} className="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-600 outline-none font-medium" />
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <label className="text-[10px] font-bold text-gray-500 uppercase">SKU</label>
+                              <input type="text" placeholder="e.g. D1725" value={item.sku} onChange={(e) => updateItem(item.id, 'sku', e.target.value)} className="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-600 outline-none" />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-bold text-gray-500 uppercase">Qty</label>
+                              <input type="number" value={item.qty} onChange={(e) => updateItem(item.id, 'qty', Number(e.target.value))} className="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-600 outline-none" />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-bold text-gray-500 uppercase">Total</label>
+                              <input type="number" value={item.itemTotal} onChange={(e) => updateItem(item.id, 'itemTotal', Number(e.target.value))} className="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-2 focus:ring-purple-600 outline-none" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* RIGHT PANEL: True Scale Canvas Area */}
+              <div ref={containerRef} className="flex-1 bg-gray-300 flex justify-center items-start overflow-x-auto lg:h-screen lg:overflow-y-auto p-4 md:p-8">
+
+                {/* Responsive Wrapper to hold the scaled content smoothly */}
+                <div style={{ width: `${1200 * scale}px`, height: `${1600 * scale}px` }} className="relative mb-8">
+
+                  {/* THE EXACT 1200x1600 CANVAS */}
+                  <div
+                    id="invoice-capture"
+                    className="absolute top-0 left-0 bg-white shadow-2xl flex flex-col"
+                    style={{
+                      width: '1200px',
+                      height: '1600px',
+                      transform: `scale(${scale})`,
+                      transformOrigin: 'top left',
+                      fontFamily: '"Times New Roman", Times, serif'
+                    }}
+                  >
+                    {/* Header Area */}
+                    <div style={{ padding: '60px 60px 40px 60px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <h1 style={{ fontSize: '46px', color: '#6d50b4', fontWeight: '400', margin: '0 0 30px 0' }}>Invoice</h1>
+                        <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '10px', fontSize: '18px', marginBottom: '8px' }}>
+                          <span style={{ color: '#555', fontWeight: '500' }}>Invoice No</span>
+                          <span style={{ color: '#000', fontWeight: '600' }}>{data.invoiceNo}</span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '10px', fontSize: '18px' }}>
+                          <span style={{ color: '#555', fontWeight: '500' }}>Invoice Date</span>
+                          <span style={{ color: '#000', fontWeight: '600' }}>{data.invoiceDate}</span>
+                        </div>
+                      </div>
+
+                      {/* Logo Area with Tagline */}
+                      <div style={{ width: '320px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                        <img
+                          src="rupsaaj.png"
+                          alt="Rupsaaj Logo"
+                          style={{ maxHeight: '140px', objectFit: 'contain' }}
+                          onError={(e) => { e.target.onerror = null; e.target.src = "https://placehold.co/400x160/000000/ff0000?text=RUPSAAJ"; }}
+                        />
+                        <p style={{
+                          margin: '8px 0 0 0',
+                          fontSize: '17px',
+                          color: '#666',
+                          fontStyle: 'italic',
+                          textAlign: 'right',
+                          letterSpacing: '0.5px'
+                        }}>
+                          "Style that lets you true shine"
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Content Area */}
+                    <div style={{ padding: '0 60px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+
+                      {/* Strict 2-Column Grid for uniformly sized address boxes & Website Address */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px', marginBottom: '40px' }}>
+
+                        {/* Billed By Box */}
+                        <div style={uniformBoxStyle}>
+                          <h2 style={{ fontSize: '22px', fontWeight: '400', color: '#6d50b4', margin: '0 0 12px 0' }}>Billed By</h2>
+                          <p style={{ fontWeight: '600', margin: '0 0 4px 0', color: '#000' }}>{data.billedBy.name}</p>
+                          {data.billedBy.address1 && <p style={{ margin: 0 }}>{data.billedBy.address1}</p>}
+                          {data.billedBy.address2 && <p style={{ margin: 0 }}>{data.billedBy.address2}</p>}
+                          {data.billedBy.address3 && <p style={{ margin: 0 }}>{data.billedBy.address3}</p>}
+                          {data.billedBy.email && <p style={{ margin: '8px 0 0 0' }}><span style={{ fontWeight: '600', color: '#000' }}>Email:</span> {data.billedBy.email}</p>}
+                          {data.billedBy.phone && <p style={{ margin: 0 }}><span style={{ fontWeight: '600', color: '#000' }}>Phone:</span> {data.billedBy.phone}</p>}
+                        </div>
+
+                        {/* Billed To Box */}
+                        <div style={uniformBoxStyle}>
+                          <h2 style={{ fontSize: '22px', fontWeight: '400', color: '#6d50b4', margin: '0 0 12px 0' }}>Billed To</h2>
+                          {data.billedTo.name && <p style={{ fontWeight: '600', margin: '0 0 4px 0', color: '#000' }}>{data.billedTo.name}</p>}
+                          {data.billedTo.fullAddress && <p style={{ margin: 0 }}>{data.billedTo.fullAddress}</p>}
+                          {data.billedTo.thana && <p style={{ margin: 0 }}>{data.billedTo.thana}</p>}
+                          {data.billedTo.district && <p style={{ margin: 0 }}>{data.billedTo.district}</p>}
+                          {data.billedTo.phone && <p style={{ margin: '8px 0 0 0' }}><span style={{ fontWeight: '600', color: '#000' }}>Phone:</span> {data.billedTo.phone}</p>}
+                        </div>
+
+                        {/* Shipped To Box */}
+                        <div style={uniformBoxStyle}>
+                          <h2 style={{ fontSize: '22px', fontWeight: '400', color: '#6d50b4', margin: '0 0 12px 0' }}>Shipped To</h2>
+                          {data.shippedTo.name && <p style={{ fontWeight: '600', margin: '0 0 4px 0', color: '#000' }}>{data.shippedTo.name}</p>}
+                          {data.shippedTo.fullAddress && <p style={{ margin: 0 }}>{data.shippedTo.fullAddress}</p>}
+                          {data.shippedTo.thana && <p style={{ margin: 0 }}>{data.shippedTo.thana}</p>}
+                          {data.shippedTo.district && <p style={{ margin: 0 }}>{data.shippedTo.district}</p>}
+                          {data.shippedTo.phone && <p style={{ margin: '8px 0 0 0' }}><span style={{ fontWeight: '600', color: '#000' }}>Phone:</span> {data.shippedTo.phone}</p>}
+                        </div>
+
+                        {/* Website Address Box */}
+                        <div style={{ display: 'flex', alignItems: 'flex-end', justifyItems: 'flex-start', padding: '0 0 20px 20px' }}>
+                           <p style={{ fontSize: '24px', color: '#6d50b4', fontWeight: 'bold', margin: 0 }}>
+                             www.rupsaaj.com
+                           </p>
+                        </div>
+
+                      </div>
+
+                      {/* Items Table */}
+                      <div style={{ marginBottom: '40px' }}>
+                        <table style={{ width: '100%', fontSize: '17px', textAlign: 'left', borderCollapse: 'collapse', color: '#111' }}>
+                          <thead style={{ backgroundColor: '#6d50b4', color: 'white' }}>
+                            <tr>
+                              <th style={{ padding: '16px 20px', fontWeight: '500', borderTopLeftRadius: '8px', width: '70%' }}>Item</th>
+                              <th style={{ padding: '16px 20px', fontWeight: '500', textAlign: 'center' }}>SKU</th>
+                              <th style={{ padding: '16px 20px', fontWeight: '500', textAlign: 'center' }}>Quantity</th>
+                              <th style={{ padding: '16px 20px', fontWeight: '500', textAlign: 'right', borderTopRightRadius: '8px' }}>Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {data.items.map((item, index) => {
+                              return (
+                                <tr key={item.id} style={{ backgroundColor: index % 2 === 0 ? '#f0eef5' : '#ffffff' }}>
+                                  <td style={{ padding: '16px 20px', display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                    <span style={{ color: '#666', fontWeight: '500' }}>{index + 1}.</span>
+                                    <span>{item.description}</span>
+                                  </td>
+                                  <td style={{ padding: '16px 20px', textAlign: 'center' }}>{item.sku}</td>
+                                  <td style={{ padding: '16px 20px', textAlign: 'center' }}>{item.qty}</td>
+                                  <td style={{ padding: '16px 20px', textAlign: 'right' }}>{data.currency} {Number(item.itemTotal).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Footer Area */}
+                      <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column' }}>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: '50px' }}>
+
+                          {/* NEW: PNG STAMP AREA */}
+                          <div style={{ width: '400px', display: 'flex', justifyContent: 'center', paddingTop: '20px' }}>
+                            {data.isPaid && (
+                              <img
+                                src="stamp.png"
+                                alt="Payment Received Stamp"
+                                style={{
+                                  maxWidth: '300px',
+                                  maxHeight: '160px',
+                                  objectFit: 'contain',
+                                  transform: 'rotate(-8deg)',
+                                  opacity: 0.85
+                                }}
+                                onError={(e) => {
+                                  e.target.onerror = null;
+                                  e.target.src = "https://placehold.co/300x120/transparent/D34D4D?text=PAYMENT+RECEIVED&font=Impact";
+                                }}
+                              />
+                            )}
+                          </div>
+
+                          {/* Clean Totals Lines */}
+                          <div style={{ width: '380px', fontSize: '18px', color: '#111' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0' }}>
+                              <span>Amount</span>
+                              <span>{data.currency} {totals.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                            </div>
+                            <div style={{ borderTop: '2px solid #000', borderBottom: '2px solid #000', display: 'flex', justifyContent: 'space-between', padding: '12px 0', marginTop: '8px', fontSize: '22px', fontWeight: 'bold' }}>
+                              <span>Total ({data.currency})</span>
+                              <span>{data.currency} {totals.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Authentication Disclaimer Text */}
+                        <div style={{
+                          textAlign: 'center',
+                          paddingBottom: '30px',
+                          color: '#777',
+                          fontSize: '15px',
+                          fontStyle: 'italic',
+                          borderTop: '1px solid #eaeaea',
+                          paddingTop: '20px'
+                        }}>
+                          This is a computer-generated invoice and does not require a physical signature.
+                        </div>
+
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
